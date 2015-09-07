@@ -1,21 +1,21 @@
 
-import asyncore
-import time
-
 from client_server import helpers
 
-class ServerHandler(asyncore.dispatcher_with_send):
+class RequestHandler(object):
 
-    def handle_read(self):
-        data = self.recv(8192)
-        self.send(self._format_reply(data))
+    @classmethod
+    def handle(cls, data):
+        sanitized_data = data.decode().strip()
+        return (cls.process(sanitized_data) + '\n').encode()
 
-    def _format_reply(self, data):
-        clean_data = data.decode('utf-8').replace('\n', '')
-        return (self._process(clean_data) + '\n').encode('utf-8')
-
-    def _process(self, data):
-        if data.startswith('QUERY'):
-            return 'OK ' + str(helpers.get_runnables())
+    @classmethod
+    def process(cls, data):
+        if data == 'QUERY':
+            return 'OK'
+        if data.startswith('INFO'):
+            return 'OK'
+        if data == 'BYE':
+            return 'BYE'
         else:
-            return 'ERR no such call: ' + data
+            return 'ERR invalid'
+
