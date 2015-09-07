@@ -1,94 +1,66 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 
 import os
+import asyncore
 import socket
-import sys
 
-from client_server import exceptions, settings
+from client_server import exceptions, handlers, settings
 
-class Server(object):
+class Server(asyncore.dispatcher):
 
-    def __init__(self, address=settings.SOCKET):
-        self.address = address
-        self.sock = self._setup_socket()
+    def __init__(self):
+        '''Call this method AFTER you initialize your subclass'''
+        asyncore.dispatcher.__init__(self)
+        self._prep_socket()
+        self.set_reuse_addr()
+        self.listen(1) # No concurrent connections
 
-    def _setup_socket(self):
-        '''Prepare socket the server will listen on'''
-        self._remove_socket() # Needs to be removed first
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.bind(self.address)
-        os.chmod(self.address, 0o700)
-        sock.listen(1)
-        return sock
+    def _prep_socket(self):
+        raise NotImplementedError('You must implement a method that creates a socket and binds to it!')
 
-    def _remove_socket(self):
-        '''Ensure the socket file does not exist'''
+    def handle_accept(self):
+        pair = self.accept()
+        if pair is None:
+            return
+        else:
+            sock, addr = pair
+            print('LOG: Incoming connection from: {addr}'.format(addr=addr))
+            handler = handlers.ServerHandler(sock)
+
+class UnixSocketServer(Server):
+
+    def __init__(self, filename):
+        self.filename = filename
+        Server.__init__(self)
+
+    def _prep_socket(self):
+        self._clean_socket()
+        self.create_socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.bind(self.filename)
+
+    def _clean_socket(self):
         try:
-            os.unlink(self.address)
+            os.unlink(self.filename)
         except OSError:
-            if os.path.exists(self.address):
-                raise exceptions.ServerException
-
-    def _process_input(self, inp):
-        message = inp[:-3]
-        return 'Server reply: "{msg} SERVER"'.format(msg=message)
-
-    def run(self):
-        try:
-            while True:
-                connection, client_addr = self.sock.accept()
-                try:
-                    message = ''
-                    while not message.endswith('EOF'):
-                        datagram = connection.recv(16)
-                        if datagram:
-                            print('Received {data}'.format(data=datagram), file=sys.stderr)
-                            message += datagram.decode('utf-8')
-                        else:
-                            print('Transmission terminated.', file=sys.stderr)
-                            break
-                    result = self._process_input(message)
-                    print(result, file=sys.stderr)
-                    connection.sendall((result + 'EOF').encode('utf-8'))
-                except BrokenPipeError:
-                    print('Connection to client lost', file=sys.stderr)
-                finally:
-                    connection.close()
-        except KeyboardInterrupt:
-            print('Killed by user.')
+            pass
 
 
-class Client(object):
+class InetSocketServer(Server):
 
-    def __init__(self, address=settings.SOCKET):
-        self.server_address = address
-        self.sock = None
+    def __init__(self, hostname, port):
+        self.hostname = hostname
+        self.port = port
+        Server.__init__(self)
 
-    def connect(self):
-        try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.connect(self.server_address)
-            self.sock = sock
-        except ConnectionRefusedError as e:
-            raise exceptions.DisconnectedException(e)
+    def _prep_socket(self):
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.bind((self.hostname, self.port))
 
-    def disconnect(self):
-        if self.sock:
-            self.sock.close()
+class Client(asyncore.dispatcher):
 
-    def send(self, message):
-        message_bytes = (message + 'EOF').encode('utf-8')
-        self.sock.sendall(message_bytes)
-        reply = ''
-        while not reply.endswith('EOF'):
-            datagram = self.sock.recv(1024).decode('utf-8')
-            if datagram:
-                print(datagram)
-                reply += datagram
-            else:
-                raise exceptions.DisconnectedException('Connection closed by server. (Disconnected)')
-        return reply
-
+    def __init__(self, address):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.connect(address)
 
 
