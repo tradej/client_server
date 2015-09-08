@@ -37,11 +37,15 @@ class UnixServer(object):
 
     @asyncio.coroutine
     def _handle_client(self, reader, writer):
-        while True:
-            data = yield from asyncio.wait_for(reader.readline(), timeout=None)
-            reply = handlers.RequestHandler.handle(data)
-            writer.write(reply)
-            if not data or data.decode().rstrip() == 'BYE':
-                logger.info('Connection closed')
-                break
+        try:
+            while True:
+                    data = yield from asyncio.wait_for(reader.readline(), timeout=None)
+                    reply = handlers.RequestHandler.handle(data)
+                    writer.write(reply)
+                    if not data or data.decode().rstrip() == 'BYE':
+                        logger.info('Connection closed')
+                        break
+        except Exception as e:
+            logger.error('Unexpected exception: ' + str(e))
+            writer.write('Server error\n'.encode('utf-8'))
 

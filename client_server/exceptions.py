@@ -1,3 +1,3 @@
 
-class ServerException(Exception):
+class ProcessingError(BaseException):
     pass
