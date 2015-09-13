@@ -7,8 +7,12 @@ class RequestHandler(object):
 
     @classmethod
     def handle(cls, data):
-        sanitized_data = json.loads(data.decode('utf-8').strip())
-        return (json.dumps(cls.process(sanitized_data), sort_keys=True) + '\n').encode()
+        try:
+            sanitized_data = json.loads(data.decode('utf-8').strip())
+            reply = cls.process(sanitized_data)
+        except ValueError:
+            reply = cls._return_error('Expecting JSON')
+        return (json.dumps(reply, sort_keys=True) + '\n').encode()
 
     @classmethod
     def process(cls, data):
