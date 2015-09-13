@@ -34,7 +34,8 @@ class RequestHandler(object):
             if params['request'] == 'tree':
                 return helpers.get_tree(depth=params['options'].get('depth', 0),
                                         icons=params['options'].get('icons', 'null'),
-                                        root=params['options'].get('root', ''))
+                                        root=params['options'].get('root', ''),
+                                        arguments=params['options'].get('arguments', False))
             # Get info on a runnable
             elif params['request'] == 'detail':
                 return helpers.get_detail(icons=params['options'].get('icons', 'null'),

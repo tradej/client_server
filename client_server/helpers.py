@@ -5,16 +5,16 @@ from devassistant import bin
 
 from client_server import exceptions
 
-def get_tree(depth, icons, root):
+def get_tree(depth, icons, root, arguments):
     treevalid = True
     tree = []
     try:
-        tree = get_actions(depth, icons, root, prefix=root + '/')
+        tree = get_actions(depth, icons, root, arguments, prefix=root + '/')
     except exceptions.ProcessingError:
         treevalid = False
 
     try:
-        tree += get_assistants(depth, icons, root, prefix=root + '/')
+        tree += get_assistants(depth, icons, root, arguments, prefix=root + '/')
     except exceptions.ProcessingError as e:
         if not treevalid:
             raise(e)
@@ -28,7 +28,7 @@ def run_runnable(*args, **kwargs):
     raise exceptions.ProcessingError('Not Implemented')
 
 
-def get_actions(depth, icons, root, currentdepth=1, prefix=''):
+def get_actions(depth, icons, root, arguments, currentdepth=1, prefix=''):
     tree = []
     root = get_actions_root(root)
 
@@ -42,11 +42,13 @@ def get_actions(depth, icons, root, currentdepth=1, prefix=''):
             'description': action.description,
             'path': prefix + action.name,
             'icon': None,  # actions currently have no icons
-            'args': [a.__dict__ for a in action.args],
         }
 
+        if arguments:
+            a['arguments'] = [a.__dict__ for a in action.args]
+
         if not depth or depth > currentdepth:
-            a['children'] = get_actions(depth, icons, root=action,
+            a['children'] = get_actions(depth, icons, root=action, arguments=arguments,
                                             currentdepth=currentdepth+1,
                                             prefix=a['path'] + '/')
 
@@ -76,7 +78,7 @@ def get_actions_root(root):
 
 # TODO get_{assistants,actions}() are almost teh same, unify somehow?
 
-def get_assistants(depth, icons, root, currentdepth=1, prefix=''):
+def get_assistants(depth, icons, root, arguments, currentdepth=1, prefix=''):
     tree = []
     root = get_assistants_root(root)
 
@@ -87,11 +89,13 @@ def get_assistants(depth, icons, root, currentdepth=1, prefix=''):
             'description': assistant.description,
             'path': prefix + assistant.name,
             'icon': None,  # actions currently have no icons
-            'args': [a.__dict__ for a in assistant.args],
         }
 
+        if arguments:
+            a['arguments'] = [a.__dict__ for a in assistant.args]
+
         if not depth or depth > currentdepth:
-            a['children'] = get_assistants(depth, icons, root=assistant,
+            a['children'] = get_assistants(depth, icons, root=assistant, arguments=arguments,
                                            currentdepth=currentdepth+1,
                                            prefix=a['path'] + '/')
 
