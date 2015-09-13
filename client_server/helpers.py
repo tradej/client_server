@@ -29,6 +29,7 @@ def get_all_actions(depth, icons, root, currentdepth=1, prefix=''):
             'description': action.description,
             'path': prefix + action.name,
             'icon': None,  # actions currently have no icons
+            'args': [a.__dict__ for a in action.args],
         }
 
         if not depth or depth > currentdepth:
