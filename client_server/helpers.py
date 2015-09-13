@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import mimetypes
+
 from six import string_types
 
 from devassistant import actions
@@ -54,8 +58,10 @@ def serialize_action(action, depth, icons, arguments, currentdepth, prefix, name
         'fullname': action.name,
         'description': action.description,
         'path': prefix + action.name,
-        'icon': None,  # actions currently have no icons
     }
+
+    if icons:
+        a['icon'] = None  # actions currently have no icons
 
     if arguments:
         a['arguments'] = [a.__dict__ for a in action.args]
@@ -109,14 +115,45 @@ def get_assistants(depth, icons, root, arguments, currentdepth=1, prefix=''):
     return tree
 
 
+def md5file(fname):
+    """http://stackoverflow.com/a/3431838"""
+    hash = hashlib.md5()
+    with open(fname, 'rb') as f:
+        hash.update(f.read())
+    return hash.hexdigest()
+
+
+def base64file(fname):
+    """http://stackoverflow.com/a/3715530"""
+    with open(fname, 'rb') as f:
+        encoded_string = base64.b64encode(f.read())
+    return encoded_string.decode()
+
+
+def mimefile(fname):
+    return mimetypes.guess_type(fname)[0]
+
+
+def get_icon(assistant, icons):
+    if not assistant.icon_path:
+        return None
+    icon = {'checksum': md5file(assistant.icon_path)}
+    if icons == 'data':
+        icon['data'] = base64file(assistant.icon_path)
+        icon['mimetype'] = mimefile(assistant.icon_path)
+    return icon
+
+
 def serialize_assistant(assistant, depth, icons, arguments, currentdepth, prefix, namesonly=False):
     a = {
         'name': assistant.name,
         'fullname': assistant.fullname,
         'description': assistant.description,
         'path': prefix + assistant.name,
-        'icon': None,  # actions currently have no icons
     }
+
+    if icons:
+        a['icon'] = get_icon(assistant, icons)
 
     if arguments:
         a['arguments'] = [a.__dict__ for a in assistant.args]
