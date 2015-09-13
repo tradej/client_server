@@ -48,4 +48,5 @@ class UnixServer(object):
         except Exception as e:
             logger.error('Unexpected exception: ' + str(e))
             writer.write('Server error\n'.encode('utf-8'))
+            raise(e)
 
