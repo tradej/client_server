@@ -1,13 +1,9 @@
 
 import os
-import logging
 import asyncio
 
-from client_server import exceptions, handlers, settings
-
-logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.INFO)
+from client_server import handlers, settings
+from client_server.logger import logger
 
 class UnixServer(object):
 
@@ -20,10 +16,7 @@ class UnixServer(object):
         startup = asyncio.start_unix_server(self._accept_client, path=self.filename, backlog=0)
         loop.run_until_complete(startup)
         logger.info('Listening on {fn}'.format(fn=self.filename))
-        try:
-            loop.run_forever()
-        finally:
-            loop.close()
+        loop.run_forever()
 
     def _prep_socket(self):
         try:
@@ -31,22 +24,21 @@ class UnixServer(object):
         except OSError:
             pass
 
+    @asyncio.coroutine
     def _accept_client(self, reader, writer):
         logger.info('Received connection')
-        task = asyncio.Task(self._handle_client(reader, writer))
-
-    @asyncio.coroutine
-    def _handle_client(self, reader, writer):
         try:
-            while True:
-                    data = yield from asyncio.wait_for(reader.readline(), timeout=None)
-                    reply = handlers.RequestHandler.handle(data)
-                    writer.write(reply)
-                    if not data or data.decode().rstrip() == 'BYE':
-                        logger.info('Connection closed')
-                        break
+            while True: # Listening for all incoming messages
+                data = yield from asyncio.wait_for(reader.readline(), timeout=None)
+                if not data:
+                    break
+                else:
+                    yield from handlers.RequestHandler(reader, writer).handle(data)
+
         except Exception as e:
             logger.error('Unexpected exception: ' + str(e))
             writer.write('Server error\n'.encode('utf-8'))
             raise(e)
 
+        finally:
+            logger.info('Connection closed')

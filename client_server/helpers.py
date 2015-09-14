@@ -135,7 +135,7 @@ def mimefile(fname):
 
 
 def get_icon(assistant, icons):
-    if not assistant.icon_path:
+    if not getattr(assistant, 'icon_path', ''):
         return None
     icon = {'checksum': md5file(assistant.icon_path)}
     if icons == 'data':

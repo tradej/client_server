@@ -1,61 +1,83 @@
 
+import uuid
+import asyncio
 import json
 
 from client_server import helpers, exceptions
+from client_server.logger import logger
 
 class RequestHandler(object):
 
-    @classmethod
-    def handle(cls, data):
-        try:
-            sanitized_data = json.loads(data.decode('utf-8').strip())
-            reply = cls.process(sanitized_data)
-        except ValueError:
-            reply = cls._return_error('Expecting JSON')
-        return (json.dumps(reply, sort_keys=True) + '\n').encode()
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
 
-    @classmethod
-    def process(cls, data):
+    @asyncio.coroutine
+    def handle(self, raw_data):
+        '''Process a message from the client.'''
         try:
-            kind = list(data.keys())[0].lower()
-        except IndexError as e:
-            return cls._return_error('Invalid format')
-
-        if kind == 'query':
-            return cls._process_query(data)
-        elif kind == 'answer':
-            return cls._process_answer(data)
-
-    @classmethod
-    def _process_query(cls, data):
-        params = data['query']
-        try:
-            # Get the tree of runnables
-            if params['request'] == 'tree':
-                return helpers.get_tree(depth=params['options'].get('depth', 0),
-                                        icons=params['options'].get('icons', 'null'),
-                                        root=params['options'].get('root', ''),
-                                        arguments=params['options'].get('arguments', False))
-            # Get info on a runnable
-            elif params['request'] == 'detail':
-                return helpers.get_detail(icons=params['options'].get('icons', 'null'),
-                                          path=params['options']['path'])
-            # Run a runnable with args
-            elif params['request'] == 'run':
-                return helpers.run_runnable(path=params['options']['path'],
-                                            arguments=params['options']['arguments'])
-            else:
-                raise exceptions.ProcessingError('Invalid request')
+            sanitized_data = json.loads(raw_data.decode('utf-8').strip())
+            yield from self._process_query(list(sanitized_data.values())[0])
+            logger.info('Done.')
         except exceptions.ProcessingError as e:
-            return cls._return_error(e)
+            logger.info('Processing error: ' + str(e))
+            self.send_error(str(e))
+        except Exception as e:
+            logger.error('Unexpected exception: ' + str(e))
+            self.send_error('Invalid request: ' + str(e))
 
-    @classmethod
-    def _process_answer(cls, data):
-        raise NotImplementedError
+    def _process_query(self, data):
+        if data['request'] == 'tree':
+            self._send_tree(data['options'])
+        elif data['request'] == 'detail':
+            self._send_detail(data['options'])
+        elif data['request'] == 'run':
+            yield from self._run(data['options'])
 
-    @classmethod
-    def _return_error(cls, error):
-        return {'error': {'reason': str(error)}}
 
+    def _send_tree(self, options):
+        '''Send the tree of runnables'''
+        logger.info('Sending tree...')
+        self.send_message(helpers.get_tree(depth=options.get('depth', 0),
+                          icons=options.get('icons', None),
+                          root=options.get('root', ''),
+                          arguments=options.get('arguments', False)))
 
+    def _send_detail(self, options):
+        '''Send details of the given runnable'''
+        logger.info('Sending detail for {path}...'.format(path=options['path']))
+        self.send_message(helpers.get_detail(icons=options.get('icons', 'null'),
+                                  path=options['path']))
+
+    @asyncio.coroutine
+    def _run(self, options):
+        if 'path' not in options:
+            raise exceptions.ProcessingError('Mission option: path')
+        logger.info('Running {path}...'.format(path=options['path']))
+        run_id = str(uuid.uuid4()).replace('-', '')
+        self.send_message({'run': {'id': run_id}})
+
+        # RUN ASSISTANT HERE
+
+        self.send_message({'finished': {'id': run_id, 'status': 'ok'}})
+
+    @asyncio.coroutine
+    def _get_answer(self):
+        '''Waits for client's answer and returns it. The calling function must
+        be a coroutine as well.
+
+        use it as follows: answer = yield from self._get_answer()
+        '''
+        data = yield from asyncio.wait_for(self.reader.readline(), timeout=None)
+        return json.loads(data.decode('utf-8').strip())
+
+    def send_error(self, error):
+        '''Format a DA API-compatible error message from the given string'''
+        msg = (json.dumps({'error': {'reason': str(error)}}) + '\n').encode('utf-8')
+        self.writer.write(msg)
+
+    def send_message(self, message):
+        '''Format a dictionary as a JSON message and send it'''
+        msg = (json.dumps(message) + '\n').encode('utf-8')
+        self.writer.write(msg)
 
