@@ -191,3 +191,12 @@ def get_assistants_root(root):
         root = get_assistant_by_path(root)
 
     return root.get_subassistants()
+
+
+def path_to_dict(path):
+    """Convrets a path (str separated with /) to dict path runner expects"""
+    path = path.split('/')
+    ret = {}
+    for number in range(len(path)):
+        ret['subassistant_{}'.format(number)] = path[number]
+    return ret

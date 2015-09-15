@@ -3,7 +3,14 @@ import uuid
 import asyncio
 import json
 
-from client_server import helpers, exceptions
+from devassistant import actions
+from devassistant import bin
+from devassistant import exceptions as daexceptions
+from devassistant import path_runner
+from devassistant.cli import argparse_generator
+
+from client_server import helpers, exceptions, dialog_helper
+from client_server import dialog_helper  # import this so it is registered
 from client_server.logger import logger
 
 class RequestHandler(object):
@@ -53,16 +60,55 @@ class RequestHandler(object):
     def _run(self, options):
         if 'path' not in options:
             raise exceptions.ProcessingError('Mission option: path')
-        logger.info('Running {path}...'.format(path=options['path']))
+        path = options['path']
+        logger.info('Running {path}...'.format(path=path))
+
+        top_assistant = bin.TopAssistant()
+
+        # PROBLEM: parse_args can accept list of arguments (only?)
+        # PROBLEM: parse_args calls exit when arguments are invalid (sort of solved)
+        # PROBLEM: parse_args displays help  when arguments are invalid
+        # PROBLEM: argparse_generator expects assistant/action path as arguments
+        # TODO: when solved, move argument processing to helpers
+
+        # We need to get a dictionary with defaults for given assistant
+        # and we also need to check if all required arguments are specified
+        # this is usually done by argparser itself
+
+        # Doesn't work:
+        #tree = top_assistant.get_subassistant_tree()
+        #argparser = argparse_generator.ArgparseGenerator.\
+        #    generate_argument_parser(tree, actions=actions.actions)
+        #try:
+        #    args = vars(argparser.parse_args( TODO ))
+        #except SystemExit:
+        #    raise exceptions.ProcessingError('Invalid arguments')
+
         run_id = str(uuid.uuid4()).replace('-', '')
+
+        # PROBLEM: sending self in args blows up when something in da tries to deepcopy it
+        # Cannot serialize socket object
+        # sending function references ends up with the same error
+        args = {'__ui__': 'json', '__handler__': self, '__id__': run_id}
+
+        try:
+            to_run = helpers.get_action_by_path(path)(**args)
+        except exceptions.ProcessingError:
+            path = top_assistant.get_selected_subassistant_path(**helpers.path_to_dict(path))
+            to_run = path_runner.PathRunner(path, args)
+
         self.send_message({'run': {'id': run_id}})
 
-        # RUN ASSISTANT HERE
+        # TODO: send log messages as JSON, don't just display them on server's stdout/err
+        try:
+            to_run.run()
+            self.send_message({'finished': {'id': run_id, 'status': 'ok'}})
+        except daexceptions.ExecutionException as e:
+            raise exceptions.ProcessingError(str(e))
 
-        self.send_message({'finished': {'id': run_id, 'status': 'ok'}})
 
     @asyncio.coroutine
-    def _get_answer(self):
+    def get_answer(self):
         '''Waits for client's answer and returns it. The calling function must
         be a coroutine as well.
 
