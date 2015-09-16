@@ -2,16 +2,19 @@
 import uuid
 import asyncio
 import json
+import logging
 
 from devassistant import actions
 from devassistant import bin
 from devassistant import exceptions as daexceptions
 from devassistant import path_runner
+from devassistant.logger import logger as dalogger
 from devassistant.cli import argparse_generator
 
 from client_server import helpers, exceptions, dialog_helper
 from client_server import dialog_helper  # import this so it is registered
 from client_server.logger import logger
+from client_server.logger import JSONHandler
 
 class RequestHandler(object):
 
@@ -99,12 +102,18 @@ class RequestHandler(object):
 
         self.send_message({'run': {'id': run_id}})
 
+        dalogger.handlers = []
+        dalogger.addHandler(JSONHandler(self, run_id))
+        dalogger.setLevel(options.get('loglevel', "INFO").upper())
+
         # TODO: send log messages as JSON, don't just display them on server's stdout/err
         try:
             to_run.run()
             self.send_message({'finished': {'id': run_id, 'status': 'ok'}})
         except daexceptions.ExecutionException as e:
             raise exceptions.ProcessingError(str(e))
+        finally:
+            dalogger.handlers = []
 
 
     @asyncio.coroutine
