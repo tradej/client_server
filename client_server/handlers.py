@@ -9,7 +9,7 @@ from devassistant import exceptions as daexceptions
 from devassistant import path_runner
 from devassistant.cli import argparse_generator
 
-from client_server import helpers, exceptions, dialog_helper
+from client_server import helpers, exceptions
 from client_server import dialog_helper  # import this so it is registered
 from client_server.logger import logger
 
@@ -18,6 +18,12 @@ class RequestHandler(object):
     def __init__(self, reader, writer):
         self.reader = reader
         self.writer = writer
+
+    def __copy__(self, memo):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
 
     @asyncio.coroutine
     def handle(self, raw_data):
@@ -32,6 +38,7 @@ class RequestHandler(object):
         except Exception as e:
             logger.error('Unexpected exception: ' + str(e))
             self.send_error('Invalid request: ' + str(e))
+            raise(e)
 
     def _process_query(self, data):
         if data['request'] == 'tree':
@@ -89,7 +96,9 @@ class RequestHandler(object):
         # PROBLEM: sending self in args blows up when something in da tries to deepcopy it
         # Cannot serialize socket object
         # sending function references ends up with the same error
-        args = {'__ui__': 'json', '__handler__': self, '__id__': run_id}
+        args = {'__ui__': 'json'}
+        # TODO: solve this in some less smelly way
+        helpers.set_dialoghelper_contex(self, run_id)
 
         try:
             to_run = helpers.get_action_by_path(path)(**args)
@@ -104,7 +113,10 @@ class RequestHandler(object):
             to_run.run()
             self.send_message({'finished': {'id': run_id, 'status': 'ok'}})
         except daexceptions.ExecutionException as e:
+            helpers.clean_dialoghelper()
             raise exceptions.ProcessingError(str(e))
+
+        helpers.clean_dialoghelper()
 
 
     @asyncio.coroutine
@@ -115,6 +127,11 @@ class RequestHandler(object):
         use it as follows: answer = yield from self._get_answer()
         '''
         data = yield from asyncio.wait_for(self.reader.readline(), timeout=None)
+        return json.loads(data.decode('utf-8').strip())
+
+    def get_answer_test(self):
+        '''Just for test, doesn't work'''
+        data = self.reader.readline()
         return json.loads(data.decode('utf-8').strip())
 
     def send_error(self, error):

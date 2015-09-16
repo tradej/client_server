@@ -7,6 +7,7 @@ from six import string_types
 from devassistant import actions
 from devassistant import bin
 
+from client_server import dialog_helper
 from client_server import exceptions
 
 def get_tree(depth, icons, root, arguments):
@@ -200,3 +201,15 @@ def path_to_dict(path):
     for number in range(len(path)):
         ret['subassistant_{}'.format(number)] = path[number]
     return ret
+
+
+def set_dialoghelper_contex(handler, run_id):
+    # TODO: solve this in some less smelly way
+    dialog_helper.JSONDialogHelper.handler = handler
+    dialog_helper.JSONDialogHelper.run_id = run_id
+
+
+def clean_dialoghelper():
+    # TODO: solve this in some less smelly way
+    dialog_helper.JSONDialogHelper.handler = None
+    dialog_helper.JSONDialogHelper.run_id = None
